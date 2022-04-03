@@ -29,7 +29,7 @@ RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
-CHECKED_STATUS = None
+CHECKED_STATUS = ''
 LAST_ERROR_MSG = ''
 HOMEWORK_STATUSES = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
@@ -39,7 +39,7 @@ HOMEWORK_STATUSES = {
 
 
 def send_message(bot, message):
-    '''Отправка сообщений в Telegram чат'''
+    """Отправка сообщений в Telegram чат."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.info(f"Удачная отправка сообщения в Telegram: {message}")
@@ -50,9 +50,8 @@ def send_message(bot, message):
         )
 
 
-
 def get_api_answer(current_timestamp):
-    '''Выполнение запроса к API сервиса Практикум.Домашка'''
+    """Выполнение запроса к API сервиса Практикум.Домашка."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     try:
@@ -69,16 +68,16 @@ def get_api_answer(current_timestamp):
         errortext = f'API сервиса Практикум.Домашка вернул ошибку: {error}'
         logger.error(errortext)
         raise CustomResponseException(errortext)
-    
 
 
 def check_response(response):
-    '''Проверка ответа API на корректность'''
+    """Проверка ответа API на корректность."""
     try:
         homeworks = response['homeworks']
         if not isinstance(homeworks, list):
             logger.error('Неверный тип данных у значения по ключу homeworks.')
-            raise TypeError('Неверный тип данных у значения по ключу homeworks.')
+            raise TypeError(
+                'Неверный тип данных у значения по ключу homeworks.')
         if not homeworks:
             logger.error('Пустой ответ. Нет ни одной домашки.')
             raise TypeError('Пустой ответ. Нет ни одной домашки.')
@@ -89,7 +88,7 @@ def check_response(response):
 
 
 def parse_status(homework):
-    '''Получение статуса домашней работы'''
+    """Получение статуса домашней работы."""
     global CHECKED_STATUS
     homework_name = homework.get('homework_name')
     homework_status = homework.get('status')
@@ -101,11 +100,11 @@ def parse_status(homework):
         CHECKED_STATUS = homework_status
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
     else:
-        logger.debug('В ответе от API отсутствует новый статус')
+        return logger.debug('В ответе от API отсутствует новый статус')
 
 
 def check_tokens():
-    '''Проверка обязательных переменных окружения'''
+    """Проверка обязательных переменных окружения."""
     return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
