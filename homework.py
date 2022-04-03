@@ -3,13 +3,14 @@ import os
 import sys
 import time
 from http import HTTPStatus
+from json.decoder import JSONDecodeError
 
 import requests
 import telegram
 from dotenv import load_dotenv
 from requests import RequestException
 
-from exceptions import CustomResponseException
+from exceptions import CustomResponseExceptionError
 
 load_dotenv()
 
@@ -29,13 +30,13 @@ RETRY_TIME = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
-CHECKED_STATUS = ''
-LAST_ERROR_MSG = ''
 HOMEWORK_STATUSES = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
+
+checked_status = None
 
 
 def send_message(bot, message):
@@ -57,17 +58,23 @@ def get_api_answer(current_timestamp):
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
         response_status = response.status_code
-        response = response.json()
+
+        try:
+            response = response.json()
+        except JSONDecodeError:
+            logger.error("Ответ не преобразован в JSON")
+            raise JSONDecodeError("Ответ не преобразован в JSON")
+
         if int(response_status) != HTTPStatus.OK:
             error = response['error']['error']
             errortext = f'API сервиса Практикум.Домашка вернул ошибку: {error}'
             logger.error(errortext)
-            raise Exception(errortext)
+            raise CustomResponseExceptionError(errortext)
         return response
     except RequestException as error:
         errortext = f'API сервиса Практикум.Домашка вернул ошибку: {error}'
         logger.error(errortext)
-        raise CustomResponseException(errortext)
+        raise CustomResponseExceptionError(errortext)
 
 
 def check_response(response):
@@ -89,18 +96,17 @@ def check_response(response):
 
 def parse_status(homework):
     """Получение статуса домашней работы."""
-    global CHECKED_STATUS
+    if 'homework_name' not in homework:
+        raise KeyError("Отсутствует ключ homework_name в ответе API.")
+    if 'status' not in homework:
+        raise KeyError("Отсутствует ключ status в ответе API.")
     homework_name = homework.get('homework_name')
     homework_status = homework.get('status')
     if homework_status not in HOMEWORK_STATUSES:
         logger.error('Недокументированный статус домашней работы.')
         raise KeyError('Недокументированный статус домашней работы.')
-    if homework_status != CHECKED_STATUS:
-        verdict = HOMEWORK_STATUSES[homework_status]
-        CHECKED_STATUS = homework_status
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    else:
-        return logger.debug('В ответе от API отсутствует новый статус')
+    verdict = HOMEWORK_STATUSES[homework_status]
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
@@ -115,21 +121,25 @@ def main():
         raise SystemExit('Программа принудительно остановлена.')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
+    last_error_msg = ''
     while True:
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
             homework = homeworks[0]
-            status = parse_status(homework)
-            if status:
+            if homework:
+                status = parse_status(homework)
                 send_message(bot, status)
+            else:
+                logger.debug('В ответе от API отсутствует новый статус')
+
             current_timestamp = response['current_date']
             time.sleep(RETRY_TIME)
         except Exception as error:
-            global LAST_ERROR_MSG
             message = f'Сбой в работе программы: {error}'
-            if LAST_ERROR_MSG != message:
-                LAST_ERROR_MSG = message
+            print(last_error_msg)
+            if last_error_msg != message:
+                last_error_msg = message
                 send_message(bot, message)
             time.sleep(RETRY_TIME)
 
