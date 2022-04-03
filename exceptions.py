@@ -1,0 +1,2 @@
+class CustomResponseException(Exception):
+    pass
